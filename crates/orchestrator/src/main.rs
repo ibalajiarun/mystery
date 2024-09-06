@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use benchmark::BenchmarkParameters;
 use clap::Parser;
-use client::{aws::AwsClient, vultr::VultrClient, ServerProviderClient};
+use client::{aws::AwsClient, gcp::GcpClient, vultr::VultrClient, ServerProviderClient};
 use eyre::Context;
 use measurements::MeasurementsCollection;
 use orchestrator::Orchestrator;
@@ -157,6 +157,11 @@ async fn main() -> eyre::Result<()> {
             // Execute the command.
             run(settings, client, opts).await
         }
+        CloudProvider::Gcp => {
+            let client = GcpClient::new(settings.clone());
+
+            run(settings, client, opts).await
+        }
     }
 }
 
@@ -168,7 +173,7 @@ async fn run<C: ServerProviderClient>(
     // Create a new testbed.
     let mut testbed = Testbed::new(settings.clone(), client)
         .await
-        .wrap_err("Failed to crate testbed")?;
+        .wrap_err("Failed to create testbed")?;
 
     match opts.operation {
         Operation::Testbed { action } => match action {

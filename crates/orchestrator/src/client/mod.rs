@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::CloudProviderResult;
 
 pub mod aws;
+pub mod gcp;
 pub mod vultr;
 
 #[derive(Debug, Deserialize, Clone, Eq, PartialEq, Hash)]

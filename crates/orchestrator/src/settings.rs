@@ -62,6 +62,8 @@ pub enum CloudProvider {
     Aws,
     #[serde(alias = "vultr")]
     Vultr,
+    #[serde(alias = "gcp")]
+    Gcp,
 }
 
 /// The testbed settings. Those are topically specified in a file.

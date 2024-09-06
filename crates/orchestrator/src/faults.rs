@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
+    collections::{BTreeMap, HashMap, VecDeque},
     fmt::{Debug, Display},
     time::Duration,
 };
 
+use plotters::coord::combinators::ToGroupByRange;
 use serde::{Deserialize, Serialize};
 
 use crate::client::Instance;
@@ -19,6 +21,15 @@ pub enum FaultsType {
         max_faults: usize,
         interval: Duration,
     },
+}
+
+impl FaultsType {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Permanent { faults } => *faults,
+            Self::CrashRecovery { max_faults, .. } => *max_faults,
+        }
+    }
 }
 
 impl Default for FaultsType {
@@ -137,7 +148,27 @@ impl CrashRecoverySchedule {
             FaultsType::Permanent { faults } => {
                 if self.dead == 0 {
                     self.dead = *faults;
-                    CrashRecoveryAction::kill(instances.drain(0..*faults))
+                    // Sort the instances by region.
+                    let mut instances_by_regions = BTreeMap::new();
+                    for instance in &self.instances {
+                        instances_by_regions
+                            .entry(&instance.region)
+                            .or_insert_with(VecDeque::new)
+                            .push_back(instance.clone());
+                    }
+                    // Round robin through the instances by region and pull up to faults instances
+                    let mut instances_to_kill = Vec::new();
+                    while instances_to_kill.len() != *faults {
+                        for (_, regional_instances) in instances_by_regions.iter_mut() {
+                            if instances_to_kill.len() == *faults {
+                                break;
+                            }
+                            if let Some(instance) = regional_instances.pop_front() {
+                                instances_to_kill.push(instance.clone());
+                            }
+                        }
+                    }
+                    CrashRecoveryAction::kill(instances_to_kill)
                 } else {
                     CrashRecoveryAction::no_op()
                 }

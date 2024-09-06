@@ -12,8 +12,7 @@ use tokio::time::{self, Instant};
 use crate::{
     benchmark::BenchmarkParameters,
     client::Instance,
-    display,
-    ensure,
+    display, ensure,
     error::{TestbedError, TestbedResult},
     faults::CrashRecoverySchedule,
     logs::LogsAnalyzer,
@@ -95,9 +94,12 @@ impl<P> Orchestrator<P> {
     ) -> TestbedResult<(Vec<Instance>, Vec<Instance>, Option<Instance>)> {
         // Ensure there are enough active instances.
         let available_instances: Vec<_> = self.instances.iter().filter(|x| x.is_active()).collect();
-        let minimum_instances = parameters.nodes
-            + self.settings.dedicated_clients
-            + if self.settings.monitoring { 1 } else { 0 };
+        let minimum_instances = if self.settings.monitoring {
+            parameters.nodes + self.settings.dedicated_clients + 1 - self.settings.faults.len()
+        } else {
+            parameters.nodes + self.settings.dedicated_clients - self.settings.faults.len()
+        };
+        let required_nodes = parameters.nodes - self.settings.faults.len();
         ensure!(
             available_instances.len() >= minimum_instances,
             TestbedError::InsufficientCapacity(minimum_instances - available_instances.len())
@@ -138,7 +140,7 @@ impl<P> Orchestrator<P> {
         // Select the instances to host the nodes.
         let mut nodes_instances = Vec::new();
         for region in self.settings.regions.iter().cycle() {
-            if nodes_instances.len() == parameters.nodes {
+            if nodes_instances.len() == required_nodes {
                 break;
             }
             if let Some(regional_instances) = instances_by_regions.get_mut(region) {
@@ -183,7 +185,9 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             "curl --proto \"=https\" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
             "echo \"source $HOME/.cargo/env\" | tee -a ~/.bashrc",
             "source $HOME/.cargo/env",
-            "rustup default stable",
+            "rustup default 1.72.1",
+            "rustup component remove cargo",
+            "rustup component add cargo --toolchain 1.72.1",
             // Create the working directory.
             &format!("mkdir -p {working_dir}"),
             // Clone the repo.
