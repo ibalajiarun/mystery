@@ -9,19 +9,10 @@ use std::{
 };
 
 use prometheus::{
-    register_counter_vec_with_registry,
-    register_histogram_vec_with_registry,
-    register_int_counter_vec_with_registry,
-    register_int_counter_with_registry,
-    register_int_gauge_vec_with_registry,
-    register_int_gauge_with_registry,
-    CounterVec,
-    HistogramVec,
-    IntCounter,
-    IntCounterVec,
-    IntGauge,
-    IntGaugeVec,
-    Registry,
+    register_counter_vec_with_registry, register_histogram_vec_with_registry,
+    register_int_counter_vec_with_registry, register_int_counter_with_registry,
+    register_int_gauge_vec_with_registry, register_int_gauge_with_registry, CounterVec,
+    HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Registry,
 };
 use tabled::{Table, Tabled};
 use tokio::time::Instant;
@@ -409,12 +400,18 @@ impl<T: Ord + AddAssign + DivUsize + Copy + Default + AsPrometheusMetric> VecHis
 
     pub fn report(&mut self) {
         for (histogram, label) in self.histograms.iter_mut() {
-            let Some([p50, p90, p99]) = histogram.pcts([500, 900, 990]) else {
+            let Some([p25, p50, p75, p90, p99]) = histogram.pcts([250, 500, 750, 900, 990]) else {
                 continue;
             };
             self.gauge
+                .with_label_values(&[label, "p25"])
+                .set(p25.as_prometheus_metric());
+            self.gauge
                 .with_label_values(&[label, "p50"])
                 .set(p50.as_prometheus_metric());
+            self.gauge
+                .with_label_values(&[label, "p75"])
+                .set(p75.as_prometheus_metric());
             self.gauge
                 .with_label_values(&[label, "p90"])
                 .set(p90.as_prometheus_metric());
@@ -468,7 +465,7 @@ impl MetricReporter {
 
     // todo - this task never stops
     async fn run(mut self) {
-        const REPORT_INTERVAL: Duration = Duration::from_secs(60);
+        const REPORT_INTERVAL: Duration = Duration::from_secs(10);
         let mut deadline = Instant::now();
         loop {
             deadline += REPORT_INTERVAL;
