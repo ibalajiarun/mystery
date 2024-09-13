@@ -1,20 +1,25 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::future::join_all;
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, RngCore};
 use tokio::sync::mpsc;
 
 use crate::{
     block_handler::BlockHandler,
+    data::Data,
     metrics::Metrics,
     net_sync::{self, NetworkSyncerInner},
     network::NetworkMessage,
     runtime::{sleep, timestamp_utc, Handle, JoinHandle},
     syncer::CommitObserver,
-    types::{AuthorityIndex, BlockReference, RoundNumber},
+    types::{AuthorityIndex, BlockReference, RoundNumber, StatementBlock},
 };
 
 // TODO: A central controller will eventually dynamically update these parameters.
@@ -50,6 +55,8 @@ impl Default for SynchronizerParameters {
 }
 
 pub struct BlockDisseminator<H: BlockHandler, C: CommitObserver> {
+    self_peer: AuthorityIndex,
+    to_peer: AuthorityIndex,
     /// The sender to the network.
     sender: mpsc::Sender<NetworkMessage>,
     /// The inner state of the network syncer.
@@ -62,6 +69,8 @@ pub struct BlockDisseminator<H: BlockHandler, C: CommitObserver> {
     parameters: SynchronizerParameters,
     /// Metrics.
     metrics: Arc<Metrics>,
+
+    start: Instant,
 }
 
 impl<H, C> BlockDisseminator<H, C>
@@ -70,18 +79,23 @@ where
     C: CommitObserver + 'static,
 {
     pub fn new(
+        self_peer: AuthorityIndex,
+        to_peer: AuthorityIndex,
         sender: mpsc::Sender<NetworkMessage>,
         inner: Arc<NetworkSyncerInner<H, C>>,
         parameters: SynchronizerParameters,
         metrics: Arc<Metrics>,
     ) -> Self {
         Self {
+            self_peer,
+            to_peer,
             sender,
             inner,
             own_blocks: None,
             other_blocks: Vec::new(),
             parameters,
             metrics,
+            start: Instant::now(),
         }
     }
 
@@ -130,24 +144,41 @@ where
         }
 
         let handle = Handle::current().spawn(Self::stream_own_blocks(
+            self.self_peer,
+            self.to_peer,
             self.sender.clone(),
             self.inner.clone(),
             round,
             self.parameters.batch_size,
+            self.start,
         ));
         self.own_blocks = Some(handle);
     }
 
+    fn drop_block(start: Instant, self_peer: AuthorityIndex, to_peer: AuthorityIndex) -> bool {
+        if start.elapsed() > Duration::from_secs(120) && self_peer < 30 {
+            let pct = thread_rng().next_u32() % 100;
+            return pct < 50;
+        }
+        false
+    }
+
     async fn stream_own_blocks(
+        self_peer: AuthorityIndex,
+        to_peer: AuthorityIndex,
         to: mpsc::Sender<NetworkMessage>,
         inner: Arc<NetworkSyncerInner<H, C>>,
         mut round: RoundNumber,
         batch_size: usize,
+        start: Instant,
     ) -> Option<()> {
         loop {
             let notified = inner.notify.notified();
             let blocks = inner.block_store.get_own_blocks(round, batch_size);
             for block in blocks {
+                if Self::drop_block(start, self_peer, to_peer) {
+                    continue;
+                }
                 round = block.round();
                 to.send(NetworkMessage::Block(block)).await.ok()?;
             }

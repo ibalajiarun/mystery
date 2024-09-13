@@ -101,6 +101,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
             public_config.parameters.enable_synchronizer,
         ));
         let main_task = handle.spawn(Self::run(
+            authority_index,
             network,
             inner.clone(),
             epoch_receiver,
@@ -129,6 +130,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
     }
 
     async fn run(
+        self_peer: AuthorityIndex,
         mut network: Network,
         inner: Arc<NetworkSyncerInner<H, C>>,
         epoch_close_signal: mpsc::Receiver<()>,
@@ -156,6 +158,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
             block_fetcher.register_authority(authority, sender).await;
 
             let task = handle.spawn(Self::connection_task(
+                self_peer,
                 connection,
                 inner.clone(),
                 block_fetcher.clone(),
@@ -176,6 +179,7 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
     }
 
     async fn connection_task(
+        self_peer: AuthorityIndex,
         mut connection: Connection,
         inner: Arc<NetworkSyncerInner<H, C>>,
         block_fetcher: Arc<BlockFetcher>,
@@ -191,6 +195,8 @@ impl<H: BlockHandler + 'static, C: CommitObserver + 'static> NetworkSyncer<H, C>
             .ok()?;
 
         let mut disseminator = BlockDisseminator::new(
+            self_peer,
+            connection.peer_id as AuthorityIndex,
             connection.sender.clone(),
             inner.clone(),
             SynchronizerParameters::default(),
@@ -454,10 +460,7 @@ mod sim_tests {
         simulator_tracing::setup_simulator_tracing,
         syncer::Syncer,
         test_util::{
-            check_commits,
-            print_stats,
-            rng_at_seed,
-            simulated_network_syncers,
+            check_commits, print_stats, rng_at_seed, simulated_network_syncers,
             simulated_network_syncers_with_epoch_duration,
         },
     };
