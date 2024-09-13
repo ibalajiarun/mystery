@@ -156,9 +156,9 @@ where
     }
 
     fn drop_block(start: Instant, self_peer: AuthorityIndex, to_peer: AuthorityIndex) -> bool {
-        if start.elapsed() > Duration::from_secs(150) && self_peer < 10 {
+        if start.elapsed() > Duration::from_secs(150) && self_peer < 5 {
             let pct = thread_rng().next_u32() % 100;
-            return pct < 10;
+            return pct < 1;
         }
         false
     }
