@@ -108,7 +108,8 @@ impl ProtocolCommands for MysticetiProtocol {
         );
 
         let mut client_parameters = parameters.client_parameters.clone();
-        client_parameters.0.load = parameters.load / parameters.nodes;
+        client_parameters.0.load =
+            parameters.load / (parameters.nodes - parameters.settings.faults.len());
         let client_parameters_string = serde_yaml::to_string(&client_parameters).unwrap();
         let client_parameters_path = self.working_dir.join("client-parameters.yaml");
         let upload_client_parameters = format!(

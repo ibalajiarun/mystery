@@ -12,6 +12,7 @@ use eyre::Context;
 use measurements::MeasurementsCollection;
 use orchestrator::Orchestrator;
 use protocol::ProtocolParameters;
+use serde_json::json;
 use settings::{CloudProvider, Settings};
 use ssh::SshConnectionManager;
 use testbed::Testbed;
@@ -236,7 +237,6 @@ async fn run<C: ServerProviderClient>(
                 }
                 None => ClientParameters::default(),
             };
-
             let set_of_benchmark_parameters = BenchmarkParameters::new_from_loads(
                 settings.clone(),
                 node_parameters,

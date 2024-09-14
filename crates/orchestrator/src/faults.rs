@@ -143,9 +143,31 @@ impl CrashRecoverySchedule {
     pub fn update(&mut self) -> CrashRecoveryAction {
         let mut instances = self.instances.clone();
 
+        let order = vec![
+            "us-west1-a",
+            "europe-west4-b",
+            "asia-northeast3-a",
+            "southamerica-east1-a",
+            "us-east1-b",
+            "europe-southwest1-a",
+            "africa-south1-a",
+            "asia-south1-a",
+            "asia-southeast1-c",
+            "australia-southeast1-a",
+        ];
+
+        let key_index_map: HashMap<String, usize> = order
+            .iter()
+            .enumerate()
+            .map(|(index, &key)| (key.into(), index))
+            .collect();
+
+        instances.sort_by_key(|i| key_index_map.get(&i.region));
+
         match &self.faults_type {
             // Permanently crash the specified number of nodes.
             FaultsType::Permanent { faults } => {
+                println!("currently dead: {}", self.dead);
                 if self.dead == 0 {
                     self.dead = *faults;
                     // Sort the instances by region.
@@ -159,16 +181,17 @@ impl CrashRecoverySchedule {
                     // Round robin through the instances by region and pull up to faults instances
                     let mut instances_to_kill = Vec::new();
                     while instances_to_kill.len() != *faults {
-                        for (_, regional_instances) in instances_by_regions.iter_mut() {
+                        for (region, regional_instances) in instances_by_regions.iter_mut() {
                             if instances_to_kill.len() == *faults {
                                 break;
                             }
                             if let Some(instance) = regional_instances.pop_front() {
+                                println!("Killing instance in region {}: {:?}", region, instance);
                                 instances_to_kill.push(instance.clone());
                             }
                         }
                     }
-                    CrashRecoveryAction::kill(instances_to_kill)
+                    CrashRecoveryAction::kill(instances_to_kill.into_iter())
                 } else {
                     CrashRecoveryAction::no_op()
                 }
@@ -195,6 +218,7 @@ impl CrashRecoverySchedule {
                     };
 
                     let to_kill = instances.drain(l..h);
+                    println!("killing...{:?}", to_kill);
                     self.dead += h - l;
                     CrashRecoveryAction::kill(to_kill)
                 }

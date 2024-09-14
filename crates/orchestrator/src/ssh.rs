@@ -245,11 +245,12 @@ impl SshConnectionManager {
         loop {
             sleep(Self::RETRY_DELAY).await;
 
-            if self
+            if let Err(e) = self
                 .execute_per_instance(instances.clone(), CommandContext::default())
                 .await
-                .is_ok()
             {
+                println!("error running command: {:?}", e);
+            } else {
                 break;
             }
         }

@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, VecDeque},
     fs,
     path::PathBuf,
+    time::Duration,
 };
 
 use tokio::time::{self, Instant};
@@ -95,11 +96,11 @@ impl<P> Orchestrator<P> {
         // Ensure there are enough active instances.
         let available_instances: Vec<_> = self.instances.iter().filter(|x| x.is_active()).collect();
         let minimum_instances = if self.settings.monitoring {
-            parameters.nodes + self.settings.dedicated_clients + 1 - self.settings.faults.len()
+            parameters.nodes + self.settings.dedicated_clients + 1
         } else {
-            parameters.nodes + self.settings.dedicated_clients - self.settings.faults.len()
+            parameters.nodes + self.settings.dedicated_clients
         };
-        let required_nodes = parameters.nodes - self.settings.faults.len();
+        let required_nodes = parameters.nodes;
         ensure!(
             available_instances.len() >= minimum_instances,
             TestbedError::InsufficientCapacity(minimum_instances - available_instances.len())
@@ -185,9 +186,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             "curl --proto \"=https\" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
             "echo \"source $HOME/.cargo/env\" | tee -a ~/.bashrc",
             "source $HOME/.cargo/env",
-            "rustup default 1.72.1",
-            "rustup component remove cargo",
-            "rustup component add cargo --toolchain 1.72.1",
+            "rustup default stable",
             // Create the working directory.
             &format!("mkdir -p {working_dir}"),
             // Clone the repo.
@@ -359,7 +358,11 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         let commands = self
             .protocol_commands
             .nodes_metrics_command(instances.clone(), parameters);
-        self.ssh_manager.wait_for_success(commands).await;
+        let _ = tokio::time::timeout(
+            Duration::from_secs(60),
+            self.ssh_manager.wait_for_success(commands),
+        )
+        .await;
 
         Ok(())
     }
@@ -611,7 +614,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             }
 
             // Deploy the load generators.
-            self.run_clients(&parameters).await?;
+            // self.run_clients(&parameters).await?;
 
             // Wait for the benchmark to terminate. Then save the results and print a summary.
             let aggregator = self.run(&parameters).await?;

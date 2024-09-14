@@ -1,3 +1,4 @@
+use futures::future::try_join_all;
 use serde::Serialize;
 
 use crate::error::CloudProviderError;
@@ -52,7 +53,9 @@ impl GcpClient {
                 gcp_instance["status"]
                     .as_str()
                     .expect("GCP instance should have a status")
-            ),
+            )
+            .as_str()
+            .into(),
         }
     }
 
@@ -109,7 +112,6 @@ impl GcpClient {
     }
 }
 
-#[async_trait::async_trait]
 impl ServerProviderClient for GcpClient {
     const USERNAME: &'static str = "balaji";
 
@@ -145,8 +147,9 @@ impl ServerProviderClient for GcpClient {
     where
         I: Iterator<Item = &'a Instance> + Send,
     {
+        let mut fut_vec = Vec::new();
         for instance in instances {
-            Command::new("gcloud")
+            let fut = Command::new("gcloud")
                 .args(&[
                     "compute",
                     "instances",
@@ -155,10 +158,13 @@ impl ServerProviderClient for GcpClient {
                     "--zone",
                     &instance.region,
                 ])
-                .output()
-                .await
-                .expect("Failed to execute command");
+                .output();
+            fut_vec.push(fut);
         }
+
+        try_join_all(fut_vec)
+            .await
+            .expect("Failed to execute command");
 
         Ok(())
     }
@@ -167,8 +173,9 @@ impl ServerProviderClient for GcpClient {
     where
         I: Iterator<Item = &'a Instance> + Send,
     {
+        let mut fut_vec = Vec::new();
         for instance in instances {
-            Command::new("gcloud")
+            let fut = Command::new("gcloud")
                 .args(&[
                     "compute",
                     "instances",
@@ -176,11 +183,15 @@ impl ServerProviderClient for GcpClient {
                     &instance.id,
                     "--zone",
                     &instance.region,
+                    "--discard-local-ssd=true",
                 ])
-                .output()
-                .await
-                .expect("Failed to execute command");
+                .output();
+            fut_vec.push(fut);
         }
+
+        try_join_all(fut_vec)
+            .await
+            .expect("Failed to execute command");
 
         Ok(())
     }
@@ -229,6 +240,12 @@ impl ServerProviderClient for GcpClient {
             .output()
             .await
             .expect("Failed to execute command");
+        if !output.status.success() {
+            return Err(CloudProviderError::FailureResponseCode(
+                format!("{:?}", output.status.code()),
+                format!("{}", String::from_utf8(output.stderr).unwrap()),
+            ));
+        }
         let gcp_instance: serde_json::Value = serde_json::from_slice(&output.stdout)?;
         let gcp_instance = &gcp_instance[0];
         Ok(self.make_instance(region, gcp_instance))
