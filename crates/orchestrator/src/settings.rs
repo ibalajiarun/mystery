@@ -186,7 +186,7 @@ mod defaults {
     }
 
     pub fn default_ssh_timeout() -> Duration {
-        Duration::from_secs(30)
+        Duration::from_secs(60)
     }
 
     pub fn default_ssh_retries() -> usize {
