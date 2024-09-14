@@ -471,7 +471,7 @@ impl MetricReporter {
 
     // todo - this task never stops
     async fn run(mut self) {
-        const REPORT_INTERVAL: Duration = Duration::from_secs(30);
+        const REPORT_INTERVAL: Duration = Duration::from_secs(10);
         let mut deadline = Instant::now();
         loop {
             deadline += REPORT_INTERVAL;
