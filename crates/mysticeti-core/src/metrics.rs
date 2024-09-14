@@ -361,10 +361,16 @@ impl<T: Ord + AddAssign + DivUsize + Copy + Default + AsPrometheusMetric> Histog
     }
 
     pub fn report(&mut self) -> Option<()> {
-        let [p50, p90, p99] = self.histogram.pcts([500, 900, 990])?;
+        let [p25, p50, p75, p90, p99] = self.histogram.pcts([250, 500, 750, 900, 990])?;
+        self.gauge
+            .with_label_values(&["p25"])
+            .set(p25.as_prometheus_metric());
         self.gauge
             .with_label_values(&["p50"])
             .set(p50.as_prometheus_metric());
+        self.gauge
+            .with_label_values(&["p75"])
+            .set(p75.as_prometheus_metric());
         self.gauge
             .with_label_values(&["p90"])
             .set(p90.as_prometheus_metric());
