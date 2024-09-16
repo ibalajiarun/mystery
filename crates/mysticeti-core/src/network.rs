@@ -7,15 +7,13 @@ use futures::{
     future::{select, select_all, Either},
     FutureExt,
 };
-use rand::{prelude::ThreadRng, Rng};
+use rand::{prelude::ThreadRng, thread_rng, Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
-        TcpListener,
-        TcpSocket,
-        TcpStream,
+        TcpListener, TcpSocket, TcpStream,
     },
     runtime::Handle,
     select,
@@ -108,6 +106,7 @@ impl Network {
             );
             handle.spawn(
                 Worker {
+                    our_id,
                     peer: *address,
                     peer_id: id,
                     connection_sender: connection_sender.clone(),
@@ -176,6 +175,7 @@ fn bind_addr(mut local_peer: SocketAddr) -> SocketAddr {
 }
 
 struct Worker {
+    our_id: usize,
     peer: SocketAddr,
     peer_id: usize,
     connection_sender: mpsc::Sender<Connection>,
@@ -185,6 +185,7 @@ struct Worker {
 }
 
 struct WorkerConnection {
+    our_id: usize,
     sender: mpsc::Sender<NetworkMessage>,
     receiver: mpsc::Receiver<NetworkMessage>,
     peer_id: usize,
@@ -271,6 +272,7 @@ impl Worker {
 
     async fn handle_stream(stream: TcpStream, connection: WorkerConnection) -> io::Result<()> {
         let WorkerConnection {
+            our_id,
             sender,
             receiver,
             peer_id,
@@ -280,7 +282,8 @@ impl Worker {
         let (reader, writer) = stream.into_split();
         let (pong_sender, pong_receiver) = mpsc::channel(16);
         let write_fut =
-            Self::handle_write_stream(writer, receiver, pong_receiver, latency_sender).boxed();
+            Self::handle_write_stream(our_id, writer, receiver, pong_receiver, latency_sender)
+                .boxed();
         let read_fut = Self::handle_read_stream(reader, sender, pong_sender).boxed();
         let (r, _, _) = select_all([write_fut, read_fut]).await;
         tracing::debug!("Disconnected from {}", peer_id);
@@ -288,6 +291,7 @@ impl Worker {
     }
 
     async fn handle_write_stream(
+        our_id: usize,
         mut writer: OwnedWriteHalf,
         mut receiver: mpsc::Receiver<NetworkMessage>,
         mut pong_receiver: mpsc::Receiver<i64>,
@@ -295,6 +299,15 @@ impl Worker {
     ) -> io::Result<()> {
         let start = Instant::now();
         let mut ping_deadline = start + PING_INTERVAL;
+
+        fn drop_message(start: Instant, self_peer: usize) -> bool {
+            if start.elapsed() > Duration::from_secs(150) && self_peer < 5 {
+                let pct = thread_rng().next_u32() % 100;
+                return pct < 1;
+            }
+            false
+        }
+
         loop {
             select! {
                 _deadline = tokio::time::sleep_until(ping_deadline) => {
@@ -354,6 +367,11 @@ impl Worker {
                 received = receiver.recv() => {
                     // todo - pass signal to break main loop
                     let Some(message) = received else {return Ok(())};
+
+                    if drop_message(start, our_id) {
+                        continue;
+                    }
+
                     let serialized = bincode::serialize(&message).expect("Serialization should not fail");
                     writer.write_u32(serialized.len() as u32).await?;
                     writer.write_all(&serialized).await?;
@@ -416,6 +434,7 @@ impl Worker {
         };
         self.connection_sender.send(connection).await.ok()?;
         Some(WorkerConnection {
+            our_id: self.our_id,
             sender: network_in_sender,
             receiver: network_out_receiver,
             peer_id: self.peer_id,
