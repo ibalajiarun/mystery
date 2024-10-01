@@ -1,13 +1,18 @@
-use futures::future::try_join_all;
-use serde::Serialize;
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
 
-use crate::error::CloudProviderError;
-use crate::{error::CloudProviderResult, settings::Settings};
-
-use super::{Instance, ServerProviderClient};
 use core::fmt;
 use std::str;
+
+use futures::future::try_join_all;
+use serde::Serialize;
 use tokio::process::Command;
+
+use super::{Instance, ServerProviderClient};
+use crate::{
+    error::{CloudProviderError, CloudProviderResult},
+    settings::Settings,
+};
 
 pub struct GcpClient {
     /// The settings of the testbed.
