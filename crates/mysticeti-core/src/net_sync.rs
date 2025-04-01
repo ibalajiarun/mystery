@@ -460,7 +460,10 @@ mod sim_tests {
         simulator_tracing::setup_simulator_tracing,
         syncer::Syncer,
         test_util::{
-            check_commits, print_stats, rng_at_seed, simulated_network_syncers,
+            check_commits,
+            print_stats,
+            rng_at_seed,
+            simulated_network_syncers,
             simulated_network_syncers_with_epoch_duration,
         },
     };
